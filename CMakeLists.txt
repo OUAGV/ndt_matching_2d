@@ -62,5 +62,8 @@ target_link_libraries(${COMP_NAME_LOWER}_node
     ${PCL_LIBRARIES}
     )
 
+ament_auto_add_executable(pointcloud_to_pcd src/pointcloud_to_pcd.cpp)
+
+
 ament_auto_package()
 
