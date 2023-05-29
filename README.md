@@ -1,8 +1,20 @@
-# rclcpp_components_template
+# ndt_matching_2d
+## subscribe
+- /scan (sensor_msgs::msg::LaserScan)
+- /odom (nav_msgs::msg::Odometry)
+- /tf (/odom -> /base_link)
 
-## How to use
+## publish
+- /accumulated_cloud (pointcloud2)
+- /current_pose (geometry_msgs::msg::PoseStamped)
+- /tf (/map -> /odom)
 
-1. Replace all `NDT_MATCHING_2D` in the filename with the name you want to use.
-2. In CMakeLists.txt and packages.xml, modify these lines as you like.
-   https://github.com/OUXT-Polaris/rclcpp_components_template/blob/f611c5997496086f2128c7ccab20e72fac79a05a/CMakeLists.txt#L2-L3
-   https://github.com/OUXT-Polaris/rclcpp_components_template/blob/f611c5997496086f2128c7ccab20e72fac79a05a/package.xml#L4-L8
+## parameters
+please see ndt_matching_2d_component.hpp.
+
+I write comments about the parameters.
+
+## How to Use
+```
+ros2 launch ndt_matching_2d ndt_matching_2d.launch.xml
+```
