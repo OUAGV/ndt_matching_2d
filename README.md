@@ -16,9 +16,9 @@
 - /tf (/map -> /odom)
 
 ## parameters
-please see ndt_matching_2d_component.hpp.
+please see ```ndt_matching_2d_component.hpp``` and ```ndt_matching_2d_component.cpp```. 
 
-I write comments about the parameters.
+I commented on the parameters.
 
 ## How to Use
 - ndt_matching
