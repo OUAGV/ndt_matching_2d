@@ -20,7 +20,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <memory> // shared_ptr in pub_
 #include <pcl/point_types.h>
-#include <pcl/registration/ndt.h>
+#include <pclomp/ndt_omp.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/passthrough.h>
 #include <geometry_msgs/msg/transform.hpp>
@@ -32,6 +32,11 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <tf2/utils.h>
+#include <tf2/LinearMath/Transform.h>
+#include <tf2/convert.h>
+#include <tf2/impl/convert.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
 namespace ndt_matching_2d
 {
   class NdtMatching2dComponent : public rclcpp::Node
@@ -58,6 +63,8 @@ namespace ndt_matching_2d
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr current_relative_pose_pub;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr accumulated_cloud_pub;
     std::unique_ptr<tf2_ros::TransformBroadcaster> broadcaster_;
+    std::unique_ptr<tf2_ros::TransformListener> listener_;
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_ptr_;
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::CallbackGroup::SharedPtr timer_group;
     rclcpp::SubscriptionOptions scan_options;
@@ -67,11 +74,13 @@ namespace ndt_matching_2d
     bool is_accumulated_cloud_initialized;
     std::string reference_frame_id;
     std::string base_frame_id;
+    std::string odom_frame_id;
     geometry_msgs::msg::PoseWithCovariance initial_pose;
     pcl::PointCloud<pcl::PointXYZ>::Ptr accumulated_cloud;
     pcl::PointCloud<pcl::PointXYZ>::Ptr current_cloud;
     geometry_msgs::msg::PoseStamped current_relative_pose_;
     geometry_msgs::msg::Twist current_relative_twist_;
+    std::shared_ptr<pclomp::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ>> ndt_;
     std::mutex mtx_;
     // parameters
     // 収束判定の閾値
@@ -93,5 +102,7 @@ namespace ndt_matching_2d
     // ヨー角速度の絶対値が閾値[rad]を超えるときはNDTを行わない
     // めっちゃ早く回ると0.4くらい、中くらいの速度だと0.2くらい角速度が出る
     double yaw_rate_threshold;
+    // ndtの並列実行数
+    int omp_num_thread_;
   };
 } // namespace ndt_matching_2d

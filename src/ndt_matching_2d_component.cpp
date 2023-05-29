@@ -32,6 +32,8 @@ namespace ndt_matching_2d
     get_parameter("reference_frame_id", reference_frame_id);
     declare_parameter("base_frame_id", "base_link");
     get_parameter("base_frame_id", base_frame_id);
+    declare_parameter("odom_frame_id", "odom");
+    get_parameter("odom_frame_id", odom_frame_id);
     declare_parameter("transform_epsilon", 1.0e-6);
     get_parameter("transform_epsilon", trans_epsilon);
     declare_parameter("step_size", 0.1);
@@ -50,8 +52,19 @@ namespace ndt_matching_2d
     get_parameter("downsampling_point_bottom_num", downsampling_point_bottom_num);
     declare_parameter("yaw_rate_threshold", 0.23);
     get_parameter("yaw_rate_threshold", yaw_rate_threshold);
+    declare_parameter("omp_num_thread", 8);
+    get_parameter("omp_num_thread", omp_num_thread_);
 
     broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
+    tf_buffer_ptr_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+    listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_ptr_);
+    ndt_ = std::make_shared<pclomp::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ>>();
+    ndt_->setNeighborhoodSearchMethod(pclomp::DIRECT7);
+    if (0 < omp_num_thread_)
+    {
+      ndt_->setNumThreads(omp_num_thread_);
+    }
+
     current_relative_pose_pub = create_publisher<geometry_msgs::msg::PoseStamped>(
         "current_pose", 10);
     accumulated_cloud_pub = create_publisher<sensor_msgs::msg::PointCloud2>("accumulated_cloud", 10);
@@ -61,9 +74,9 @@ namespace ndt_matching_2d
     pose_options.callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
     timer_group = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-    timer_ = this->create_wall_timer(
-        std::chrono::milliseconds(100), std::bind(&NdtMatching2dComponent::timerCallback, this),
-        timer_group);
+    // timer_ = this->create_wall_timer(
+    //     std::chrono::milliseconds(100), std::bind(&NdtMatching2dComponent::timerCallback, this),
+    //     timer_group);
 
     // subscriptionOptionsを別々にすると精度がかなり悪くなるため、同じcallback_groupにする
     // こうするとcallbackが同時に呼ばれることがなく、mutexを使わなくても良くなり、なんかうまいこといく
@@ -213,19 +226,50 @@ namespace ndt_matching_2d
   void NdtMatching2dComponent::publishCurrentRelativePose(const std::string frame_id, const std::string child_frame_id,
                                                           const geometry_msgs::msg::PoseStamped pose)
   {
-    geometry_msgs::msg::TransformStamped transform_stamped;
-    transform_stamped.header.frame_id = frame_id;
-    transform_stamped.header.stamp = pose.header.stamp;
-    transform_stamped.child_frame_id = child_frame_id;
-    transform_stamped.transform.translation.x = pose.pose.position.x;
-    transform_stamped.transform.translation.y = pose.pose.position.y;
-    transform_stamped.transform.translation.z = pose.pose.position.z;
-    transform_stamped.transform.rotation.w = pose.pose.orientation.w;
-    transform_stamped.transform.rotation.x = pose.pose.orientation.x;
-    transform_stamped.transform.rotation.y = pose.pose.orientation.y;
-    transform_stamped.transform.rotation.z = pose.pose.orientation.z;
-    // RCLCPP_INFO(get_logger(), "frame_id : %s child_frame_id : %s", frame_id.c_str(), child_frame_id.c_str());
-    broadcaster_->sendTransform(transform_stamped);
+    geometry_msgs::msg::TransformStamped map_to_baselink_tf;
+    map_to_baselink_tf.header.frame_id = frame_id;
+    map_to_baselink_tf.header.stamp = pose.header.stamp;
+    map_to_baselink_tf.child_frame_id = child_frame_id;
+    map_to_baselink_tf.transform.translation.x = pose.pose.position.x;
+    map_to_baselink_tf.transform.translation.y = pose.pose.position.y;
+    map_to_baselink_tf.transform.translation.z = pose.pose.position.z;
+    map_to_baselink_tf.transform.rotation.w = pose.pose.orientation.w;
+    map_to_baselink_tf.transform.rotation.x = pose.pose.orientation.x;
+    map_to_baselink_tf.transform.rotation.y = pose.pose.orientation.y;
+    map_to_baselink_tf.transform.rotation.z = pose.pose.orientation.z;
+
+    try
+    {
+      geometry_msgs::msg::TransformStamped odom_to_base_link_transform;
+      odom_to_base_link_transform = tf_buffer_ptr_->lookupTransform(odom_frame_id, child_frame_id, tf2::TimePointZero, tf2::durationFromSec(1.0));
+      geometry_msgs::msg::TransformStamped map_to_odom_transform;
+      map_to_odom_transform.header.frame_id = frame_id;
+      map_to_odom_transform.child_frame_id = odom_frame_id;
+      map_to_odom_transform.header.stamp = pose.header.stamp;
+      // mapからbase_linkとodomからbase_linkの情報を元にmapからodomの情報を計算
+      map_to_odom_transform.transform = tf2::toMsg(
+          tf2::Transform(tf2::Quaternion(map_to_baselink_tf.transform.rotation.x,
+                                         map_to_baselink_tf.transform.rotation.y,
+                                         map_to_baselink_tf.transform.rotation.z,
+                                         map_to_baselink_tf.transform.rotation.w),
+                         tf2::Vector3(map_to_baselink_tf.transform.translation.x,
+                                      map_to_baselink_tf.transform.translation.y,
+                                      map_to_baselink_tf.transform.translation.z)) *
+          tf2::Transform(tf2::Quaternion(odom_to_base_link_transform.transform.rotation.x,
+                                         odom_to_base_link_transform.transform.rotation.y,
+                                         odom_to_base_link_transform.transform.rotation.z,
+                                         odom_to_base_link_transform.transform.rotation.w),
+                         tf2::Vector3(odom_to_base_link_transform.transform.translation.x,
+                                      odom_to_base_link_transform.transform.translation.y,
+                                      odom_to_base_link_transform.transform.translation.z))
+              .inverse());
+      broadcaster_->sendTransform(map_to_odom_transform);
+    }
+    catch (tf2::TransformException &ex)
+    {
+      RCLCPP_WARN(get_logger(), "%s", ex.what());
+      return;
+    }
   }
 
   void NdtMatching2dComponent::publishAccumulatedCloud()
@@ -244,9 +288,6 @@ namespace ndt_matching_2d
    */
   void NdtMatching2dComponent::updateRelativePose(pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud, rclcpp::Time stamp)
   {
-
-    /*initialize*/
-    pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt;
     /*filtering*/
     std::vector<double> range_local{
         -pc_range,
@@ -269,12 +310,12 @@ namespace ndt_matching_2d
     }
 
     // パラメータのセット
-    ndt.setTransformationEpsilon(trans_epsilon);
-    ndt.setStepSize(stepsize);
-    ndt.setResolution(resolution);
-    ndt.setMaximumIterations(max_iterations);
-    ndt.setInputSource(input_cloud);
-    ndt.setInputTarget(accumulated_cloud);
+    ndt_->setTransformationEpsilon(trans_epsilon);
+    ndt_->setStepSize(stepsize);
+    ndt_->setResolution(resolution);
+    ndt_->setMaximumIterations(max_iterations);
+    ndt_->setInputSource(input_cloud);
+    ndt_->setInputTarget(accumulated_cloud);
 
     // 初期推定値の設定
     geometry_msgs::msg::Transform transform;
@@ -295,38 +336,38 @@ namespace ndt_matching_2d
       return;
     }
 
-    if (containsNaN(current_cloud) || containsNaN(accumulated_cloud))
-    {
-      RCLCPP_WARN(get_logger(), "cloud contains NaN");
-      return;
-    };
+    // if (containsNaN(current_cloud) || containsNaN(accumulated_cloud))
+    // {
+    //   RCLCPP_WARN(get_logger(), "cloud contains NaN");
+    //   return;
+    // };
 
     // alignの実行
     std::cout << "aligning ..." << std::endl;
     // align = 移動とスコア計算のイテレーション
     // 第1引数は推定後のPointCloudであり,これを蓄積していく。
     // 第2引数は初期推定値
-    ndt.align(*output_cloud, mat);
+    ndt_->align(*output_cloud, mat);
     std::cout << "DONE" << std::endl;
 
     /*drop out*/
-    if (!ndt.hasConverged())
+    if (!ndt_->hasConverged())
     {
       RCLCPP_WARN(get_logger(), "ndt has not converged");
       return;
     }
 
     /*print*/
-    std::cout << "Normal Distributions Transform has converged:" << ndt.hasConverged() << std::endl
-              << " score: " << ndt.getFitnessScore() << std::endl;
+    std::cout << "Normal Distributions Transform has converged:" << ndt_->hasConverged() << std::endl
+              << " score: " << ndt_->getFitnessScore() << std::endl;
     std::cout << "ndt.getFinalTransformation()" << std::endl
-              << ndt.getFinalTransformation() << std::endl;
+              << ndt_->getFinalTransformation() << std::endl;
     std::cout << "init_guess" << std::endl
               << mat << std::endl;
-    std::cout << "ndt.getFinalNumIteration() = " << ndt.getFinalNumIteration() << std::endl;
+    std::cout << "ndt.getFinalNumIteration() = " << ndt_->getFinalNumIteration() << std::endl;
 
     // 結果の取得と計算
-    Eigen::Matrix4f final_transform = ndt.getFinalTransformation();
+    Eigen::Matrix4f final_transform = ndt_->getFinalTransformation();
     tf2::Matrix3x3 rotation_mat;
     rotation_mat.setValue(
         static_cast<double>(final_transform(0, 0)), static_cast<double>(final_transform(0, 1)),
