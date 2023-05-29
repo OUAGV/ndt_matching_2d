@@ -1,0 +1,17 @@
+<launch>
+<node_container pkg="rclcpp_components" exec="component_container_mt" name="ndt_container" namespace="ndt" args="" output="screen">
+<composable_node name="ndt_matching_2d_node" pkg="ndt_matching_2d" plugin="ndt_matching_2d::NdtMatching2dComponent">
+    <param name="reference_frame_id" value="map"/>
+    <param name="base_frame_id" value="base_link"/>
+    <param name="transform_epsilon" value="1.0e-6"/>
+    <param name="step_size" value="0.1"/>
+    <param name="resolution" value="0.3"/>
+    <param name="max_iterations" value="20"/>
+    <param name="leafsize_source" value="0.03"/>
+    <param name="leafsize_target" value="0.04"/>
+    <param name="pc_range" value="20.0"/>
+    <param name="downsampling_point_bottom_num" value="600"/>
+    <param name="yaw_rate_threshold" value="0.25"/>
+</composable_node>
+</node_container>
+</launch>

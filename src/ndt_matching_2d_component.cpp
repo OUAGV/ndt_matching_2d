@@ -14,7 +14,6 @@
 
 // Headers in this package
 #include "ndt_matching_2d/ndt_matching_2d_component.hpp"
-
 // Components
 #include <rclcpp_components/register_node_macro.hpp>
 
@@ -25,79 +24,141 @@ namespace ndt_matching_2d
   NdtMatching2dComponent::NdtMatching2dComponent(const rclcpp::NodeOptions &options)
       : Node("ndt_matching_2d_node", options),
         initial_pose_set(false),
-        reference_frame_id("map"),
-        base_frame_id("base_link"),
+        is_accumulated_cloud_initialized(false),
         accumulated_cloud(new pcl::PointCloud<pcl::PointXYZ>),
-        current_cloud(new pcl::PointCloud<pcl::PointXYZ>),
-        trans_epsilon(1.0e-6),
-        stepsize(0.1),
-        resolution(0.1),
-        max_iterations(20),
-        leafsize_source(0.045),
-        leafsize_target(0.045),
-        pc_range(100.0)
+        current_cloud(new pcl::PointCloud<pcl::PointXYZ>)
   {
-    broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
+    declare_parameter("reference_frame_id", "map");
+    get_parameter("reference_frame_id", reference_frame_id);
+    declare_parameter("base_frame_id", "base_link");
+    get_parameter("base_frame_id", base_frame_id);
+    declare_parameter("transform_epsilon", 1.0e-6);
+    get_parameter("transform_epsilon", trans_epsilon);
+    declare_parameter("step_size", 0.1);
+    get_parameter("step_size", stepsize);
+    declare_parameter("resolution", 0.1);
+    get_parameter("resolution", resolution);
+    declare_parameter("max_iterations", 20);
+    get_parameter("max_iterations", max_iterations);
+    declare_parameter("leafsize_source", 0.03);
+    get_parameter("leafsize_source", leafsize_source);
+    declare_parameter("leafsize_target", 0.045);
+    get_parameter("leafsize_target", leafsize_target);
+    declare_parameter("pc_range", 15.0);
+    get_parameter("pc_range", pc_range);
+    declare_parameter("downsampling_point_bottom_num", 300);
+    get_parameter("downsampling_point_bottom_num", downsampling_point_bottom_num);
+    declare_parameter("yaw_rate_threshold", 0.23);
+    get_parameter("yaw_rate_threshold", yaw_rate_threshold);
+
+    broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
     current_relative_pose_pub = create_publisher<geometry_msgs::msg::PoseStamped>(
         "current_pose", 10);
     accumulated_cloud_pub = create_publisher<sensor_msgs::msg::PointCloud2>("accumulated_cloud", 10);
 
-    /**
-     * @brief odomをsubscribeして、初期座標として登録する
-     *
-     */
+    // subscriptionOptionsを別々に設定すると並列にcallback出来る
+    scan_options.callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    pose_options.callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+    timer_group = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(100), std::bind(&NdtMatching2dComponent::timerCallback, this),
+        timer_group);
+
+    // subscriptionOptionsを別々にすると精度がかなり悪くなるため、同じcallback_groupにする
+    // こうするとcallbackが同時に呼ばれることがなく、mutexを使わなくても良くなり、なんかうまいこといく
     pose_sub = create_subscription<nav_msgs::msg::Odometry>(
-        "odom", 10, [this](const nav_msgs::msg::Odometry::SharedPtr msg)
-        {
-   
-      // 初期位置が設定されていない場合は初期位置を設定
-      if (!initial_pose_set) {
-        initial_pose = msg->pose;
-        RCLCPP_INFO(
+        "odom", 10, std::bind(&NdtMatching2dComponent::poseCallback, this, std::placeholders::_1), scan_options);
+    scan_sub = create_subscription<sensor_msgs::msg::LaserScan>(
+        "scan", 10, std::bind(&NdtMatching2dComponent::scanCallback, this, std::placeholders::_1), scan_options);
+  }
+
+  /**
+   * @brief 50msごとにmap->base_linkのtfと/current_poseをpublishする
+   *
+   */
+  void NdtMatching2dComponent::timerCallback()
+  {
+    std::lock_guard<std::mutex> lock(mtx_);
+  }
+
+  /**
+   * @brief odomをsubscribeして、初期座標として登録する
+   *
+   * @param msg
+   */
+  void NdtMatching2dComponent::poseCallback(nav_msgs::msg::Odometry::SharedPtr msg)
+  {
+
+    // 初期位置が設定されていない場合は初期位置を設定
+    if (!initial_pose_set)
+    {
+      initial_pose = msg->pose;
+      RCLCPP_INFO(
           get_logger(), "initial_pose set x : %lf y : %lf", initial_pose.pose.position.x,
           initial_pose.pose.position.y);
+    }
+    else
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      // 初期位置が既に設定されているときは、現在位置を更新
+      current_relative_pose_.pose.position.x = msg->pose.pose.position.x;
+      current_relative_pose_.pose.position.y = msg->pose.pose.position.y;
+      current_relative_pose_.pose.position.z = msg->pose.pose.position.z;
+      current_relative_pose_.pose.orientation.x = msg->pose.pose.orientation.x;
+      current_relative_pose_.pose.orientation.y = msg->pose.pose.orientation.y;
+      current_relative_pose_.pose.orientation.z = msg->pose.pose.orientation.z;
+      current_relative_pose_.pose.orientation.w = msg->pose.pose.orientation.w;
+      current_relative_twist_.angular.z = msg->twist.twist.angular.z;
+    }
+    initial_pose_set = true;
+  }
+
+  /**
+   * @brief scanをsubscribeして、NDTを行う
+   *
+   * @param msg
+   */
+  void NdtMatching2dComponent::scanCallback(sensor_msgs::msg::LaserScan::SharedPtr msg)
+  {
+    // RCLCPP_INFO(get_logger(), "scan received");
+    if (!initial_pose_set)
+    {
+      RCLCPP_INFO(get_logger(), "initial_pose is not set");
+      return;
+    }
+    if (accumulated_cloud->points.size() == 0)
+    {
+      // if (is_accumulated_cloud_initialized)
+      if (false)
+      {
+        RCLCPP_WARN(get_logger(), "accumulated_cloud is empty");
       }
       else
       {
-        // 初期位置が既に設定されているときは、現在位置を更新
-        current_relative_pose_.pose.position.x = msg->pose.pose.position.x;
-        current_relative_pose_.pose.position.y = msg->pose.pose.position.y;
-        current_relative_pose_.pose.position.z = msg->pose.pose.position.z;
-        current_relative_pose_.pose.orientation.x = msg->pose.pose.orientation.x;
-        current_relative_pose_.pose.orientation.y = msg->pose.pose.orientation.y;
-        current_relative_pose_.pose.orientation.z = msg->pose.pose.orientation.z;
-        current_relative_pose_.pose.orientation.w = msg->pose.pose.orientation.w;
-      }
-      initial_pose_set = true; });
-
-    /**
-     * @brief scanをsubscribeして、NDTを行う
-     *
-     */
-    scan_sub = create_subscription<sensor_msgs::msg::LaserScan>(
-        "scan", 10, [this](const sensor_msgs::msg::LaserScan::SharedPtr msg)
-        {
-      // RCLCPP_INFO(get_logger(), "scan received");
-      if (!initial_pose_set) {
-        RCLCPP_INFO(get_logger(), "initial_pose is not set");
-        return;
-      }
-      if (accumulated_cloud->points.size() == 0) {
         RCLCPP_INFO(get_logger(), "initializing accumulated cloud");
         setCurrentPointCloudFromScan(msg);
         // 初期cloudを蓄積cloudとして登録
         initialCloudRegistration(current_cloud);
-      } else {
-        setCurrentPointCloudFromScan(msg);
-        std::vector<int> nan_index;
-        // NaNを消去しないとNDTがうまくいかないらしい
-        pcl::removeNaNFromPointCloud(*current_cloud, *current_cloud, nan_index);
-        updateRelativePose(current_cloud, msg->header.stamp);
-        publishCurrentRelativePose(
-            reference_frame_id, base_frame_id, current_relative_pose_);
-        current_relative_pose_pub->publish(current_relative_pose_);
-        publishAccumulatedCloud();
-      } });
+      }
+      return;
+    }
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (std::abs(current_relative_twist_.angular.z) >= yaw_rate_threshold)
+    {
+      RCLCPP_WARN(get_logger(), "yaw_rate is too large");
+      return;
+    }
+    setCurrentPointCloudFromScan(msg);
+    std::vector<int> nan_index;
+    // NaNを消去しないとNDTがうまくいかないらしい
+    pcl::removeNaNFromPointCloud(*current_cloud, *current_cloud, nan_index);
+
+    updateRelativePose(current_cloud, msg->header.stamp);
+    publishCurrentRelativePose(
+        reference_frame_id, base_frame_id, current_relative_pose_);
+    current_relative_pose_pub->publish(current_relative_pose_);
+    publishAccumulatedCloud();
   }
 
   /**
@@ -116,6 +177,7 @@ namespace ndt_matching_2d
     std::vector<int> nan_index;
     // NaNを消去しないとNDTがうまくいかないらしい
     pcl::removeNaNFromPointCloud(*accumulated_cloud, *accumulated_cloud, nan_index);
+    is_accumulated_cloud_initialized = true;
   }
 
   /**
@@ -162,6 +224,7 @@ namespace ndt_matching_2d
     transform_stamped.transform.rotation.x = pose.pose.orientation.x;
     transform_stamped.transform.rotation.y = pose.pose.orientation.y;
     transform_stamped.transform.rotation.z = pose.pose.orientation.z;
+    // RCLCPP_INFO(get_logger(), "frame_id : %s child_frame_id : %s", frame_id.c_str(), child_frame_id.c_str());
     broadcaster_->sendTransform(transform_stamped);
   }
 
@@ -294,14 +357,20 @@ namespace ndt_matching_2d
 
   void NdtMatching2dComponent::downsamplePoints(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, double leafsize)
   {
-    RCLCPP_INFO(get_logger(), "downsampling cloud size before : %d", pc->points.size());
+    const int before_size = pc->points.size();
     pcl::PointCloud<pcl::PointXYZ>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::VoxelGrid<pcl::PointXYZ> vg;
     vg.setInputCloud(pc);
     vg.setLeafSize(static_cast<float>(leafsize), static_cast<float>(leafsize), static_cast<float>(leafsize));
     vg.filter(*tmp);
+    // 点を減らしすぎるとalignでセグフォになるため、最低点数を設定
+    if (tmp->points.size() < downsampling_point_bottom_num)
+    {
+      RCLCPP_WARN(get_logger(), "downsampled cloud size is too small");
+      return;
+    }
     *pc = *tmp;
-    RCLCPP_INFO(get_logger(), "downsampled cloud size after : %d", pc->points.size());
+    RCLCPP_INFO(get_logger(), "downsampled cloud size before : %d after : %d", before_size, pc->points.size());
   }
   void NdtMatching2dComponent::PassThroughFilter(pcl::PointCloud<pcl::PointXYZ>::Ptr pc_in,
                                                  pcl::PointCloud<pcl::PointXYZ>::Ptr pc_out,

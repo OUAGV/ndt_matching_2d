@@ -17,13 +17,16 @@
 #include <ndt_matching_2d/ndt_matching_2d_component.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-int main(int argc, char * argv[])
+int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
   rclcpp::NodeOptions options;
   RCLCPP_INFO(rclcpp::get_logger("ndt_matching_2d_node"), "ndt_matching_2d_node started!");
   auto component = std::make_shared<ndt_matching_2d::NdtMatching2dComponent>(options);
-  rclcpp::spin(component);
+  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4);
+  executor.add_node(component);
+  executor.spin();
+  // rclcpp::spin(component);
   rclcpp::shutdown();
   return 0;
 }

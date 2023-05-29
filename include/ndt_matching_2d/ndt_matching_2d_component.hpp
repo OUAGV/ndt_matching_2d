@@ -48,23 +48,31 @@ namespace ndt_matching_2d
     void downsamplePoints(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, double leafsize);
     void PassThroughFilter(pcl::PointCloud<pcl::PointXYZ>::Ptr pc_in, pcl::PointCloud<pcl::PointXYZ>::Ptr pc_out, std::vector<double> range);
     bool containsNaN(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+    void timerCallback();
+    void scanCallback(sensor_msgs::msg::LaserScan::SharedPtr msg);
+    void poseCallback(nav_msgs::msg::Odometry::SharedPtr msg);
 
   private:
-    //  std::shared_ptr<rclcpp::Publisher<perception_msgs::msg::Tracking2D>> pub_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr current_relative_pose_pub;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr accumulated_cloud_pub;
-    std::shared_ptr<tf2_ros::TransformBroadcaster> broadcaster_;
+    std::unique_ptr<tf2_ros::TransformBroadcaster> broadcaster_;
+    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::CallbackGroup::SharedPtr timer_group;
+    rclcpp::SubscriptionOptions scan_options;
+    rclcpp::SubscriptionOptions pose_options;
 
     bool initial_pose_set;
+    bool is_accumulated_cloud_initialized;
     std::string reference_frame_id;
     std::string base_frame_id;
     geometry_msgs::msg::PoseWithCovariance initial_pose;
     pcl::PointCloud<pcl::PointXYZ>::Ptr accumulated_cloud;
     pcl::PointCloud<pcl::PointXYZ>::Ptr current_cloud;
     geometry_msgs::msg::PoseStamped current_relative_pose_;
-
+    geometry_msgs::msg::Twist current_relative_twist_;
+    std::mutex mtx_;
     // parameters
     // 収束判定の閾値
     double trans_epsilon;
@@ -74,11 +82,16 @@ namespace ndt_matching_2d
     double resolution;
     // 最大繰り返し回数
     int max_iterations;
-    // 蓄積点群用のダウンサンプリングのボクセルサイズ[m]
+    // 蓄積点群用のダウンサンプリングのボクセルサイズ[m] 値が大きいとたくさん点が消える
     double leafsize_source;
-    // ターゲット点群用のダウンサンプリングのボクセルサイズ[m]
+    // ターゲット点群用のダウンサンプリングのボクセルサイズ[m] 値が大きいとたくさん点が消える
     double leafsize_target;
     // この値[m]以上の距離の点は除去する
     double pc_range;
+    // ダウンサンプリングを行った後の点群の量の下限値
+    int downsampling_point_bottom_num;
+    // ヨー角速度の絶対値が閾値[rad]を超えるときはNDTを行わない
+    // めっちゃ早く回ると0.4くらい、中くらいの速度だと0.2くらい角速度が出る
+    double yaw_rate_threshold;
   };
 } // namespace ndt_matching_2d
