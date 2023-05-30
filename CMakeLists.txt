@@ -52,6 +52,19 @@ target_link_libraries(${COMP_NAME_LOWER}_component
 rclcpp_components_register_nodes(${COMP_NAME_LOWER}_component
     "${PROJECT_NAME}::NdtMatching2dComponent")
 
+ament_auto_add_library(ndt_localization_2d_component SHARED
+    src/ndt_localization_2d_component.cpp
+)
+target_compile_definitions(ndt_localization_2d_component
+    PRIVATE ${PROJECT_NAME}_BUILDING_DLL)
+target_link_libraries(ndt_localization_2d_component
+  ${PCL_LIBRARIES})
+rclcpp_components_register_nodes(ndt_localization_2d_component
+    "${PROJECT_NAME}::NdtLocalization2dComponent")
+
+
+
+
 # Create the executor target
 ament_auto_add_executable(${COMP_NAME_LOWER}_node
     NO_TARGET_LINK_LIBRARIES
@@ -59,6 +72,15 @@ ament_auto_add_executable(${COMP_NAME_LOWER}_node
 )
 target_link_libraries(${COMP_NAME_LOWER}_node
     ${COMP_NAME_LOWER}_component
+    ${PCL_LIBRARIES}
+    )
+
+ament_auto_add_executable(ndt_localization_2d_node
+    NO_TARGET_LINK_LIBRARIES
+    src/ndt_localization_2d_node.cpp
+)
+target_link_libraries(ndt_localization_2d_node
+    ndt_localization_2d_component
     ${PCL_LIBRARIES}
     )
 
