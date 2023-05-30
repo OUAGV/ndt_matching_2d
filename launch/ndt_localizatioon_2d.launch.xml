@@ -7,15 +7,16 @@
     <param name="step_size" value="0.1"/>
     <param name="resolution" value="0.05"/>
     <param name="max_iterations" value="20"/>
-    <param name="leafsize_source" value="0.025"/>
+    <param name="leafsize_source" value="0.01"/>
     <param name="leafsize_target" value="0.04"/>
     <param name="pc_range" value="15.0"/>
     <param name="downsampling_point_bottom_num" value="600"/>
-    <param name="yaw_rate_threshold" value="0.2"/>
+    <param name="yaw_rate_threshold" value="0.30"/>
+    <param name="publish_tf" value="false"/>
 </composable_node>
 <composable_node name="pcl_loader" pkg="pcl_apps" plugin="pcl_apps::PcdLoaderComponent">
     <param name="file_path" value="/home/tatsuki/colcon_ws/src/ndt_matching_2d/pcd/output.pcd"/>
-    <param name="output_topic" value="/accumulated_pointcloud"/>
+    <param name="output_topic" value="/accumulated_cloud"/>
 </composable_node>
 </node_container>
 </launch>

@@ -54,6 +54,8 @@ namespace ndt_matching_2d
     get_parameter("yaw_rate_threshold", yaw_rate_threshold);
     declare_parameter("omp_num_thread", 8);
     get_parameter("omp_num_thread", omp_num_thread_);
+    declare_parameter("publish_tf", true);
+    get_parameter("publish_tf", publish_tf);
 
     broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
     tf_buffer_ptr_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -74,7 +76,7 @@ namespace ndt_matching_2d
         "scan", 10, std::bind(&NdtLocalization2dComponent::scanCallback, this, std::placeholders::_1), scan_options);
 
     accumulated_pointcloud_sub = create_subscription<sensor_msgs::msg::PointCloud2>(
-        "accumulated_pointcloud", 10, [this](sensor_msgs::msg::PointCloud2::SharedPtr msg)
+        "accumulated_cloud", 10, [this](sensor_msgs::msg::PointCloud2::SharedPtr msg)
         {
           if(is_accumulated_cloud_initialized) 
           {
@@ -82,7 +84,10 @@ namespace ndt_matching_2d
           }
           pcl::fromROSMsg(*msg, *accumulated_cloud);
           ndt_->setInputTarget(accumulated_cloud);
+          RCLCPP_INFO(get_logger(), "accumulated_pointcloud received");
           is_accumulated_cloud_initialized = true; });
+
+    accumulated_cloud_pub = create_publisher<sensor_msgs::msg::PointCloud2>("current_accumulated_cloud", 10);
   }
 
   /**
@@ -147,8 +152,11 @@ namespace ndt_matching_2d
     pcl::removeNaNFromPointCloud(*current_cloud, *current_cloud, nan_index);
 
     updateRelativePose(current_cloud, msg->header.stamp);
-    publishCurrentRelativePose(
-        reference_frame_id, base_frame_id, current_relative_pose_);
+    if (publish_tf)
+    {
+      publishCurrentRelativePose(
+          reference_frame_id, base_frame_id, current_relative_pose_);
+    }
     current_relative_pose_pub->publish(current_relative_pose_);
   }
 
@@ -232,6 +240,14 @@ namespace ndt_matching_2d
       RCLCPP_WARN(get_logger(), "%s", ex.what());
       return;
     }
+  }
+
+  void NdtLocalization2dComponent::publishAccumulatedCloud()
+  {
+    sensor_msgs::msg::PointCloud2 cloud_msg;
+    pcl::toROSMsg(*accumulated_cloud, cloud_msg);
+    cloud_msg.header.frame_id = reference_frame_id;
+    accumulated_cloud_pub->publish(cloud_msg);
   }
 
   /**
@@ -335,6 +351,8 @@ namespace ndt_matching_2d
     RCLCPP_INFO(
         get_logger(), "current_relative_pose x : %lf y : %lf yaw : %lf", current_relative_pose_.pose.position.x,
         current_relative_pose_.pose.position.y, tf2::getYaw(quat));
+
+    publishAccumulatedCloud();
   }
 
   void NdtLocalization2dComponent::downsamplePoints(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, double leafsize)

@@ -48,6 +48,7 @@ namespace ndt_matching_2d
     void publishCurrentRelativePose(const std::string frame_id, const std::string child_frame_id,
                                     const geometry_msgs::msg::PoseStamped pose);
     void updateRelativePose(pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud, rclcpp::Time stamp);
+    void publishAccumulatedCloud();
     void downsamplePoints(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, double leafsize);
     void PassThroughFilter(pcl::PointCloud<pcl::PointXYZ>::Ptr pc_in, pcl::PointCloud<pcl::PointXYZ>::Ptr pc_out, std::vector<double> range);
     bool containsNaN(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
@@ -59,6 +60,7 @@ namespace ndt_matching_2d
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr accumulated_pointcloud_sub;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr current_relative_pose_pub;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr accumulated_cloud_pub;
     std::unique_ptr<tf2_ros::TransformBroadcaster> broadcaster_;
     std::unique_ptr<tf2_ros::TransformListener> listener_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_ptr_;
@@ -99,5 +101,7 @@ namespace ndt_matching_2d
     double yaw_rate_threshold;
     // ndtの並列実行数
     int omp_num_thread_;
+    // tf(map->odom)をpublishするかどうか
+    bool publish_tf;
   };
 } // namespace ndt_matching_2d
