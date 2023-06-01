@@ -34,25 +34,25 @@ namespace ndt_matching_2d
     get_parameter("base_frame_id", base_frame_id);
     declare_parameter("odom_frame_id", "odom");
     get_parameter("odom_frame_id", odom_frame_id);
-    declare_parameter("transform_epsilon", 1.0e-6);
+    declare_parameter<double>("transform_epsilon", 1.0e-6);
     get_parameter("transform_epsilon", trans_epsilon);
-    declare_parameter("step_size", 0.1);
+    declare_parameter<double>("step_size", 0.1);
     get_parameter("step_size", stepsize);
-    declare_parameter("resolution", 0.1);
+    declare_parameter<double>("resolution", 0.1);
     get_parameter("resolution", resolution);
-    declare_parameter("max_iterations", 20);
+    declare_parameter<int>("max_iterations", 20);
     get_parameter("max_iterations", max_iterations);
-    declare_parameter("leafsize_source", 0.03);
+    declare_parameter<double>("leafsize_source", 0.03);
     get_parameter("leafsize_source", leafsize_source);
-    declare_parameter("leafsize_target", 0.045);
+    declare_parameter<double>("leafsize_target", 0.045);
     get_parameter("leafsize_target", leafsize_target);
-    declare_parameter("pc_range", 15.0);
+    declare_parameter<double>("pc_range", 15.0);
     get_parameter("pc_range", pc_range);
-    declare_parameter("downsampling_point_bottom_num", 300);
+    declare_parameter<int>("downsampling_point_bottom_num", 300);
     get_parameter("downsampling_point_bottom_num", downsampling_point_bottom_num);
-    declare_parameter("yaw_rate_threshold", 0.23);
+    declare_parameter<double>("yaw_rate_threshold", 0.23);
     get_parameter("yaw_rate_threshold", yaw_rate_threshold);
-    declare_parameter("omp_num_thread", 8);
+    declare_parameter<int>("omp_num_thread", 8);
     get_parameter("omp_num_thread", omp_num_thread_);
     declare_parameter("publish_tf", true);
     get_parameter("publish_tf", publish_tf);
@@ -68,10 +68,10 @@ namespace ndt_matching_2d
     }
 
     current_relative_pose_pub = create_publisher<geometry_msgs::msg::PoseStamped>(
-        "current_pose", 10);
+        "ndt_pose", 10);
 
     pose_sub = create_subscription<nav_msgs::msg::Odometry>(
-        "odom", 10, std::bind(&NdtLocalization2dComponent::poseCallback, this, std::placeholders::_1), scan_options);
+        "current_pose_twist", 10, std::bind(&NdtLocalization2dComponent::poseCallback, this, std::placeholders::_1), scan_options);
     scan_sub = create_subscription<sensor_msgs::msg::LaserScan>(
         "scan", 10, std::bind(&NdtLocalization2dComponent::scanCallback, this, std::placeholders::_1), scan_options);
 
@@ -144,6 +144,8 @@ namespace ndt_matching_2d
     if (std::abs(current_relative_twist_.angular.z) >= yaw_rate_threshold)
     {
       RCLCPP_WARN(get_logger(), "yaw_rate is too large");
+      // 試しにyaw_rateが大きいときは、位置を更新せずにpublishする
+      current_relative_pose_pub->publish(current_relative_pose_);
       return;
     }
     setCurrentPointCloudFromScan(msg);
