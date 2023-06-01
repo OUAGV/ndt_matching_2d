@@ -66,7 +66,7 @@ namespace ndt_matching_2d
     }
 
     current_relative_pose_pub = create_publisher<geometry_msgs::msg::PoseStamped>(
-        "current_pose", 10);
+        "ndt_pose", 10);
     accumulated_cloud_pub = create_publisher<sensor_msgs::msg::PointCloud2>("accumulated_cloud", 10);
 
     // subscriptionOptionsを別々に設定すると並列にcallback出来る
@@ -81,7 +81,7 @@ namespace ndt_matching_2d
     // subscriptionOptionsを別々にすると精度がかなり悪くなるため、同じcallback_groupにする
     // こうするとcallbackが同時に呼ばれることがなく、mutexを使わなくても良くなり、なんかうまいこといく
     pose_sub = create_subscription<nav_msgs::msg::Odometry>(
-        "odom", 10, std::bind(&NdtMatching2dComponent::poseCallback, this, std::placeholders::_1), scan_options);
+        "current_pose_twist", 10, std::bind(&NdtMatching2dComponent::poseCallback, this, std::placeholders::_1), scan_options);
     scan_sub = create_subscription<sensor_msgs::msg::LaserScan>(
         "scan", 10, std::bind(&NdtMatching2dComponent::scanCallback, this, std::placeholders::_1), scan_options);
   }
@@ -209,7 +209,7 @@ namespace ndt_matching_2d
     for (int i = 0; i < msg->ranges.size(); i++)
     {
       pcl::PointXYZ point;
-      if (msg->ranges[i] >= 0.1)
+      if (msg->ranges[i] >= 0.01)
       {
         point.x = msg->ranges[i] * cos(msg->angle_min + msg->angle_increment * i);
         point.y = msg->ranges[i] * sin(msg->angle_min + msg->angle_increment * i);

@@ -11,7 +11,7 @@
     <param name="leafsize_target" value="0.04"/>
     <param name="pc_range" value="15.0"/>
     <param name="downsampling_point_bottom_num" value="600"/>
-    <param name="yaw_rate_threshold" value="0.30"/>
+    <param name="yaw_rate_threshold" value="0.35"/>
     <param name="publish_tf" value="false"/>
 </composable_node>
 <composable_node name="pcl_loader" pkg="pcl_apps" plugin="pcl_apps::PcdLoaderComponent">

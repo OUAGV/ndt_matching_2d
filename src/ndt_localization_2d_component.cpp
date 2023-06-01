@@ -178,7 +178,7 @@ namespace ndt_matching_2d
     for (int i = 0; i < msg->ranges.size(); i++)
     {
       pcl::PointXYZ point;
-      if (msg->ranges[i] >= 0.1)
+      if (msg->ranges[i] >= 0.01)
       {
         point.x = msg->ranges[i] * cos(msg->angle_min + msg->angle_increment * i);
         point.y = msg->ranges[i] * sin(msg->angle_min + msg->angle_increment * i);
