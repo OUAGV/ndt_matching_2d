@@ -8,8 +8,8 @@
     <param name="resolution" value="0.1"/>
     <param name="max_iterations" value="20"/>
     <param name="leafsize_source" value="0.02"/>
-    <param name="leafsize_target" value="0.035"/>
-    <param name="pc_range" value="15.0"/>
+    <param name="leafsize_target" value="0.03"/>
+    <param name="pc_range" value="100.0"/>
     <param name="downsampling_point_bottom_num" value="600"/>
     <param name="yaw_rate_threshold" value="0.35"/>
 </composable_node>
