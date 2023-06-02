@@ -11,7 +11,7 @@
     <param name="leafsize_target" value="0.03"/>
     <param name="pc_range" value="100.0"/>
     <param name="downsampling_point_bottom_num" value="600"/>
-    <param name="yaw_rate_threshold" value="0.35"/>
+    <param name="yaw_rate_threshold" value="0.40"/>
 </composable_node>
 </node_container>
 </launch>

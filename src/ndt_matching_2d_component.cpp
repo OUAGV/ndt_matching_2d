@@ -209,13 +209,10 @@ namespace ndt_matching_2d
     for (int i = 0; i < msg->ranges.size(); i++)
     {
       pcl::PointXYZ point;
-      if (msg->ranges[i] >= 0.01)
-      {
-        point.x = msg->ranges[i] * cos(msg->angle_min + msg->angle_increment * i);
-        point.y = msg->ranges[i] * sin(msg->angle_min + msg->angle_increment * i);
-        point.z = 0.0;
-        current_cloud->points.emplace_back(point);
-      }
+      point.x = msg->ranges[i] * cos(msg->angle_min + msg->angle_increment * i);
+      point.y = msg->ranges[i] * sin(msg->angle_min + msg->angle_increment * i);
+      point.z = 0.0;
+      current_cloud->points.emplace_back(point);
     }
   }
 
@@ -302,8 +299,8 @@ namespace ndt_matching_2d
         current_relative_pose_.pose.position.x + pc_range,
         current_relative_pose_.pose.position.y - pc_range,
         current_relative_pose_.pose.position.y + pc_range};
-    PassThroughFilter(current_cloud, current_cloud, range_global);
-    PassThroughFilter(accumulated_cloud, accumulated_cloud, range_local);
+    PassThroughFilter(current_cloud, current_cloud, range_local);
+    PassThroughFilter(accumulated_cloud, accumulated_cloud, range_global);
     downsamplePoints(current_cloud, leafsize_source);
     /*drop out*/
     if (current_cloud->points.empty() || accumulated_cloud->points.empty())
@@ -327,7 +324,7 @@ namespace ndt_matching_2d
     transform.translation.z = current_relative_pose_.pose.position.z;
     transform.rotation = current_relative_pose_.pose.orientation;
     Eigen::Matrix4f mat = tf2::transformToEigen(transform).matrix().cast<float>();
-    auto output_cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+    pcl::PointCloud<pcl::PointXYZ>::Ptr output_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
 
     // 蓄積点群の方が点群数が少ないとエラーが出るので処理
     if (current_cloud->points.size() > accumulated_cloud->points.size())
@@ -393,6 +390,18 @@ namespace ndt_matching_2d
     RCLCPP_INFO(
         get_logger(), "current_relative_pose x : %lf y : %lf yaw : %lf", current_relative_pose_.pose.position.x,
         current_relative_pose_.pose.position.y, tf2::getYaw(quat));
+
+    // なぜかbase_linkと同じ位置に点があるので、それを消す
+    pcl::PassThrough<pcl::PointXYZ> pass;
+    pass.setNegative(true);
+    pass.setInputCloud(output_cloud);
+    pass.setFilterFieldName("x");
+    pass.setFilterLimits(current_relative_pose_.pose.position.x - 0.01, current_relative_pose_.pose.position.x + 0.01);
+    pass.filter(*output_cloud);
+    pass.setInputCloud(output_cloud);
+    pass.setFilterFieldName("y");
+    pass.setFilterLimits(current_relative_pose_.pose.position.y - 0.01, current_relative_pose_.pose.position.y + 0.01);
+    pass.filter(*output_cloud);
 
     /*register*/
     *accumulated_cloud += *output_cloud;
