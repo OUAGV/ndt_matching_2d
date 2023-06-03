@@ -6,13 +6,13 @@
 
 ## subscribe
 - /scan (sensor_msgs::msg::LaserScan)
-- /odom (nav_msgs::msg::Odometry)
+- /current_pose_twist (nav_msgs::msg::Odometry)
   - The topic should contain the information of x,y,yaw and the angular velocity of yaw. 
 - /tf (/odom -> /base_link)
 
 ## publish
 - /accumulated_cloud (pointcloud2)
-- /current_pose (geometry_msgs::msg::PoseStamped)
+- /ndt_pose (geometry_msgs::msg::PoseStamped)
 - /tf (/map -> /odom)
 
 ## parameters
