@@ -5,14 +5,14 @@
     <param name="base_frame_id" value="base_link"/>
     <param name="transform_epsilon" value="1.0e-6"/>
     <param name="step_size" value="0.1"/>
-    <param name="resolution" value="0.05"/>
+    <param name="resolution" value="0.1"/>
     <param name="max_iterations" value="20"/>
     <param name="leafsize_source" value="0.02"/>
-    <param name="leafsize_target" value="0.035"/>
-    <param name="pc_range" value="15.0"/>
+    <param name="leafsize_target" value="0.03"/>
+    <param name="pc_range" value="100.0"/>
     <param name="downsampling_point_bottom_num" value="600"/>
-    <param name="yaw_rate_threshold" value="0.35"/>
-    <param name="publish_tf" value="false"/>
+    <param name="yaw_rate_threshold" value="0.40"/>
+    <param name="publish_tf" value="true"/>
 </composable_node>
 <composable_node name="pcl_loader" pkg="pcl_apps" plugin="pcl_apps::PcdLoaderComponent">
     <param name="file_path" value="/home/tatsuki/colcon_ws/src/ndt_matching_2d/pcd/output.pcd"/>
