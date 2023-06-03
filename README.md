@@ -25,6 +25,10 @@ I commented on the parameters.
 ```
 ros2 launch ndt_matching_2d ndt_matching_2d.launch.xml
 ```
+- ndt_localization
+```
+ros2 launch ndt_matching_2d ndt_localization_2d.launch.xml
+```
 
 - simulator
 ```
